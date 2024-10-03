@@ -11,9 +11,11 @@ import (
 	"gorm.io/gorm"
 )
 
-//type team struct {
-//	ID   unit   `json:"id" gorm:"primaryKey"`
-//	Name string `json:"name"`
+// Team struct represents the Team model
+//type Team struct {
+//	ID    unit   `json:"id" gorm:"primaryKey"`
+//	Name  string `json:"name"`
+//	Users []User `json:"users" gorm:"foreignKey:TeamID"` // One-to-many relationship
 //}
 
 // Define the User struct, which will represent a table in PostgreSQL
@@ -22,6 +24,7 @@ type User struct {
 	Name  string `json:"name"`
 	Age   int    `json:"age"`
 	Phone string `json:"phone"`
+	//TeamID unit   `json:"team_id"` //foreign key
 }
 
 var db *gorm.DB
@@ -36,6 +39,7 @@ func initDB() {
 	}
 
 	// Automatically migrate the schema (create the "users" table)
+	//db.AutoMigrate(&team{}, &User{})
 	db.AutoMigrate(&User{})
 }
 
@@ -45,9 +49,51 @@ func main() {
 
 	// Initialize Echo
 	e := echo.New()
+	//
+	//// TEAM CODE
+	//// GET request to fetch all teams
+	//e.GET("/teams", func(c echo.Context) error {
+	//	var teams []Team
+	//	if err := db.Preload("Users").Find(&teams).Error; err != nil {
+	//		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch teams"})
+	//	}
+	//	return c.JSON(http.StatusOK, teams)
+	//})
+	//// POST request to create a new team
+	//e.POST("/teams", func(c echo.Context) error {
+	//	team := new(Team)
+	//	if err := c.Bind(team); err != nil {
+	//		return c.JSON(http.StatusBadRequest, err)
+	//	}
+	//	db.Create(team) //Insert the new team into database
+	//	return c.JSON(http.StatusCreated, team)
+	//})
+	//// GET req to fetch a specific team by ID
+	//e.GET("/teams/:id", func(c echo.Context) error {
+	//	id := c.Param("id")
+	//	var team Team
+	//	if err := db.Preload("Users").First(&team, id).Error; err != nil {
+	//		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to fetch team"})
+	//	}
+	//	return c.JSON(http.StatusOK, team)
+	//})
 
+	// USER CODE
 	// GET request to fetch all users
-	e.GET("/users/:id", func(c echo.Context) error {
+	e.GET("/User", func(c echo.Context) error {
+		// Create a slice to hold multiple users
+		var user []User
+		// Retrieve all users from the database
+		result := db.Find(&user)
+		if result.Error != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch users"})
+		}
+		// Return the list of users as JSON
+		return c.JSON(http.StatusOK, user)
+	})
+
+	// GET request to fetch  user WITH ID
+	e.GET("/User/:id", func(c echo.Context) error {
 		id := c.Param("id")
 		var user User
 		// Convert string id to int
@@ -71,10 +117,27 @@ func main() {
 		if err := c.Bind(user); err != nil {
 			return c.JSON(http.StatusBadRequest, err)
 		}
+		// Manual Validation
+		if user.Name == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user name"})
+		}
+		if user.Age < 0 || user.Age > 150 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user age"})
+		}
+		if user.Phone == "" || len(user.Phone) < 10 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user phone"})
+		}
+		for _, char := range user.Phone {
+			if char < '0' || char > '9' {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user phone"})
+			}
+		}
+
 		db.Create(&user) // Insert the new user into the database
 		return c.JSON(http.StatusOK, user)
 	})
 
+	// PUT request to  update the user with ID
 	e.PUT("/User/:id", func(c echo.Context) error {
 
 		id := c.Param("id")
@@ -100,15 +163,28 @@ func main() {
 		if err := db.Save(&user).Error; err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed To Update user"})
 		}
-
+		// Manual Validation
+		if user.Name == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user name"})
+		}
+		if user.Age < 0 || user.Age > 150 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user age"})
+		}
+		if user.Phone == "" || len(user.Phone) < 10 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user phone"})
+		}
+		for _, char := range user.Phone {
+			if char < '0' || char > '9' {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user phone"})
+			}
+		}
 		// Update the user response
-
 		response := fmt.Sprintf("Updated user ID %d: %s, Age: %d, Phone: %s", intID, user.Name, user.Age, user.Phone)
 		return c.JSON(http.StatusOK, map[string]string{"message": response})
 
 	})
 
-	// DELETE request to create a new user
+	// DELETE request to delete  user by ID
 	e.DELETE("/User/:id", func(c echo.Context) error {
 		id := c.Param("id")
 		var user User
