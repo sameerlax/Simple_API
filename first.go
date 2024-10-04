@@ -15,7 +15,7 @@ import (
 type Team struct {
 	ID    uint   `json:"id" gorm:"primaryKey"`
 	Name  string `json:"name"`
-	Users []User `json:"users" gorm:"foreignKey:TeamID"` // One-to-many relationship
+	Users []User `json:"users,omitempty" gorm:"foreignKey:TeamID"` // One-to-many relationship
 }
 
 // Define the User struct, which will represent a table in PostgreSQL
@@ -51,19 +51,41 @@ func main() {
 	e := echo.New()
 
 	// TEAM CODE
-	// GET request to fetch all teams
+	// GET request to fetch all teams Without User data
 	e.GET("/teams", func(c echo.Context) error {
+		// create a slice to hold multiple teams
 		var teams []Team
-		if err := db.Preload("Users").Find(&teams).Error; err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch teams"})
+		// Retrieve all the teams from database
+		result := db.Find(&teams)
+		if result.Error != nil {
+			return c.JSON(http.StatusInternalServerError, result.Error)
+		}
+		return c.JSON(http.StatusOK, teams)
+
+	})
+
+	// GET request to fetch all teams With User data
+	e.GET("/teams/users", func(c echo.Context) error {
+		var teams []Team
+		result := db.Preload("Users").Find(&teams)
+		if result.Error != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Team,User Not Found"})
 		}
 		return c.JSON(http.StatusOK, teams)
 	})
 
 	// GET request to fetch a specific team by ID
 	e.GET("/teams/:id", func(c echo.Context) error {
-		id := c.Param("id")
+
 		var team Team
+		idParam := c.Param("id")
+
+		// Convert idParam to uint
+		id, err := strconv.ParseUint(idParam, 10, 32)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid team ID"})
+		}
+
 		if err := db.First(&team, id).Error; err != nil {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "Team not found"})
 		}
@@ -76,15 +98,51 @@ func main() {
 		if err := c.Bind(team); err != nil {
 			return c.JSON(http.StatusBadRequest, err)
 		}
+		// Validation for team
+		if team.Name == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Team Name is required"})
+		}
 		db.Create(team) //Insert the new team into database
 		return c.JSON(http.StatusCreated, team)
+	})
+
+	// POST request to create multiple users for a team
+	e.POST("/teams/:id/users", func(c echo.Context) error {
+		idParam := c.Param("id") // Team ID as string
+
+		// Convert idParam to uint
+		id, err := strconv.ParseUint(idParam, 10, 32)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid team ID"})
+		}
+
+		var users []User
+
+		// Bind request body to users
+		if err := c.Bind(&users); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid data"})
+		}
+
+		// Set TeamID for each user
+		for i := range users {
+			users[i].TeamID = uint(id) // Convert id to uint and assign
+
+		}
+
+		// Insert users into the database
+		if err := db.Create(&users).Error; err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create users"})
+		}
+
+		// Return the created users
+		return c.JSON(http.StatusOK, users)
 	})
 
 	// PUT request to update the team with ID
 	e.PUT("/teams/:id", func(c echo.Context) error {
 		id := c.Param("id")
-		var team Team
-
+		//var team Team
+		team := Team{}
 		// Attempt to find the team by ID
 		if err := db.First(&team, id).Error; err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Team not found"})
@@ -122,6 +180,7 @@ func main() {
 		if err := db.First(&team, id).Error; err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Team not found"})
 		}
+
 		// Delete the team from database
 		if err := db.Delete(&team).Error; err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete team"})
@@ -129,6 +188,27 @@ func main() {
 		// Return a success message
 		return c.JSON(http.StatusOK, team)
 	})
+	// Remove user from team
+	e.DELETE("/teams/:Tid/users/:Uid", func(c echo.Context) error {
+		var users []User
+		teamId := c.Param("Tid")
+		userId := c.Param("Uid")
+		// Finding user associated with team
+		if err := db.Where("team_id = ? AND id = ? ", teamId, userId).First(&users).Error; err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Team not found"})
+		}
+		// If no user found , return a message
+		if len(users) == 0 {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
+		}
+
+		// Delete the found user
+		if err := db.Delete(&users).Error; err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete users"})
+		}
+		return c.JSON(http.StatusOK, users)
+	})
+
 	// USER CODE
 	// GET request to fetch all users
 	e.GET("/User", func(c echo.Context) error {
@@ -183,7 +263,6 @@ func main() {
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user phone"})
 			}
 		}
-
 		db.Create(&user) // Insert the new user into the database
 		return c.JSON(http.StatusOK, user)
 	})
@@ -210,10 +289,6 @@ func main() {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Bad request"})
 		}
 
-		// Save the updated user back to the database
-		if err := db.Save(&user).Error; err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed To Update user"})
-		}
 		// Manual Validation
 		if user.Name == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user name"})
@@ -229,6 +304,12 @@ func main() {
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user phone"})
 			}
 		}
+
+		// Save the updated user back to the database
+		if err := db.Save(&user).Error; err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed To Update user"})
+		}
+
 		// Update the user response
 		response := fmt.Sprintf("Updated user ID %d: %s, Age: %d, Phone: %s", intID, user.Name, user.Age, user.Phone)
 		return c.JSON(http.StatusOK, map[string]string{"message": response})
