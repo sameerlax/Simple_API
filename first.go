@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"gorm.io/gorm/logger"
 	"log"
 	"net/http"
 	"strconv"
@@ -13,9 +14,9 @@ import (
 
 // Team struct represents the Team model
 type Team struct {
-	ID    uint   `json:"id" gorm:"primaryKey"`
-	Name  string `json:"name"`
-	Users []User `json:"users,omitempty" gorm:"foreignKey:TeamID"` // One-to-many relationship
+	ID    uint    `json:"id" gorm:"primaryKey"`
+	Name  string  `json:"name"`
+	Users []*User `json:"users,omitempty"  gorm:"foreignKey:TeamID" ` //One-to-many relationship
 }
 
 // Define the User struct, which will represent a table in PostgreSQL
@@ -33,7 +34,9 @@ var err error
 func initDB() {
 	// Set up the PostgreSQL connection
 	dsn := "host=localhost user=postgres password=2023 dbname=yourdb port=5432 sslmode=disable"
-	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
 		log.Fatal("Failed to connect to the database: ", err)
 	}
@@ -52,20 +55,20 @@ func main() {
 
 	// TEAM CODE
 	// GET request to fetch all teams Without User data
-	e.GET("/teams", func(c echo.Context) error {
+	e.GET("/service1/teams", func(c echo.Context) error {
 		// create a slice to hold multiple teams
 		var teams []Team
 		// Retrieve all the teams from database
 		result := db.Find(&teams)
 		if result.Error != nil {
-			return c.JSON(http.StatusInternalServerError, result.Error)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Team not found"})
 		}
 		return c.JSON(http.StatusOK, teams)
 
 	})
 
 	// GET request to fetch all teams With User data
-	e.GET("/teams/users", func(c echo.Context) error {
+	e.GET("service1/teams/users", func(c echo.Context) error {
 		var teams []Team
 		result := db.Preload("Users").Find(&teams)
 		if result.Error != nil {
@@ -75,7 +78,7 @@ func main() {
 	})
 
 	// GET request to fetch a specific team by ID
-	e.GET("/teams/:id", func(c echo.Context) error {
+	e.GET("service1/teams/:id", func(c echo.Context) error {
 
 		var team Team
 		idParam := c.Param("id")
@@ -86,14 +89,14 @@ func main() {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid team ID"})
 		}
 
-		if err := db.First(&team, id).Error; err != nil {
+		if err := db.Find(&team, id).Error; err != nil {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "Team not found"})
 		}
 		return c.JSON(http.StatusOK, team)
 	})
 
 	// POST request to create a new team
-	e.POST("/teams", func(c echo.Context) error {
+	e.POST("/service1/teams", func(c echo.Context) error {
 		team := new(Team)
 		if err := c.Bind(team); err != nil {
 			return c.JSON(http.StatusBadRequest, err)
@@ -107,7 +110,7 @@ func main() {
 	})
 
 	// POST request to create multiple users for a team
-	e.POST("/teams/:id/users", func(c echo.Context) error {
+	e.POST("service1/teams/:id/users", func(c echo.Context) error {
 		idParam := c.Param("id") // Team ID as string
 
 		// Convert idParam to uint
@@ -120,7 +123,7 @@ func main() {
 
 		// Bind request body to users
 		if err := c.Bind(&users); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid data"})
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid data Str"})
 		}
 
 		// Set TeamID for each user
@@ -135,11 +138,11 @@ func main() {
 		}
 
 		// Return the created users
-		return c.JSON(http.StatusOK, users)
+		return c.JSON(http.StatusCreated, users)
 	})
 
 	// PUT request to update the team with ID
-	e.PUT("/teams/:id", func(c echo.Context) error {
+	e.PUT("service1/teams/:id", func(c echo.Context) error {
 		id := c.Param("id")
 		//var team Team
 		team := Team{}
@@ -172,7 +175,7 @@ func main() {
 	})
 
 	// DELETE request to delete  a team by ID
-	e.DELETE("/teams/:id", func(c echo.Context) error {
+	e.DELETE("service1/teams/:id", func(c echo.Context) error {
 		id := c.Param("id")
 		var team Team
 
@@ -182,14 +185,14 @@ func main() {
 		}
 
 		// Delete the team from database
-		if err := db.Delete(&team).Error; err != nil {
+		if err := db.Debug().Delete(&team).Error; err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete team"})
 		}
 		// Return a success message
 		return c.JSON(http.StatusOK, team)
 	})
 	// Remove user from team
-	e.DELETE("/teams/:Tid/users/:Uid", func(c echo.Context) error {
+	e.DELETE("service1/teams/:Tid/users/:Uid", func(c echo.Context) error {
 		var users []User
 		teamId := c.Param("Tid")
 		userId := c.Param("Uid")
@@ -211,7 +214,7 @@ func main() {
 
 	// USER CODE
 	// GET request to fetch all users
-	e.GET("/User", func(c echo.Context) error {
+	e.GET("service1/User", func(c echo.Context) error {
 		// Create a slice to hold multiple users
 		var user []User
 		// Retrieve all users from the database
@@ -224,7 +227,7 @@ func main() {
 	})
 
 	// GET request to fetch  user WITH ID
-	e.GET("/User/:id", func(c echo.Context) error {
+	e.GET("service1/User/:id", func(c echo.Context) error {
 		id := c.Param("id")
 		var user User
 		// Convert string id to int
@@ -234,7 +237,7 @@ func main() {
 		}
 
 		// Retrieve the user by ID from the database
-		result := db.First(&user, intID) // Use `First` to fetch the user with the given id
+		result := db.First(&user, intID).Error // Use `First` to fetch the user with the given id
 		if result.Error != nil {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "User not found"})
 		}
@@ -243,7 +246,7 @@ func main() {
 	})
 
 	// POST request to create a new user
-	e.POST("/User", func(c echo.Context) error {
+	e.POST("service1/User", func(c echo.Context) error {
 		user := new(User)
 		if err := c.Bind(user); err != nil {
 			return c.JSON(http.StatusBadRequest, err)
@@ -264,11 +267,11 @@ func main() {
 			}
 		}
 		db.Create(&user) // Insert the new user into the database
-		return c.JSON(http.StatusOK, user)
+		return c.JSON(http.StatusCreated, user)
 	})
 
 	// PUT request to  update the user with ID
-	e.PUT("/User/:id", func(c echo.Context) error {
+	e.PUT("service1/User/:id", func(c echo.Context) error {
 
 		id := c.Param("id")
 		var user User
@@ -317,7 +320,7 @@ func main() {
 	})
 
 	// DELETE request to delete  user by ID
-	e.DELETE("/User/:id", func(c echo.Context) error {
+	e.DELETE("service1/User/:id", func(c echo.Context) error {
 		id := c.Param("id")
 		var user User
 		// Convert string id to int
