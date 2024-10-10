@@ -78,7 +78,7 @@ func main() {
 	})
 
 	// GET request to fetch a specific team by ID
-	e.GET("service1/teams/:id", func(c echo.Context) error {
+	e.GET("/service1/teams/:id", func(c echo.Context) error {
 
 		var team Team
 		idParam := c.Param("id")
